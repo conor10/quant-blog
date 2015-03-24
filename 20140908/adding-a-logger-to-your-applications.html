@@ -1,0 +1,170 @@
+An item that is often overlooked by developers is making use of proper logging in their applications. In this post I'm going to provide you with a simple logging setup you can easily incorporate into any of your existing Python applications.
+
+[code]
+2014-09-03 06:27:41,983 - root - DEBUG - Input data in descending order for file ../data/ACN.csv, reversing
+2014-09-03 06:27:41,986 - root - DEBUG - Annualised Sharpe Ratio: 0.107247516502
+2014-09-03 06:27:41,987 - root - DEBUG - Annualised Sharpe Ratio: -1.66352350713
+2014-09-03 06:27:42,274 - root - DEBUG - Annualised Sharpe Ratio: 2.70814542564
+2014-09-03 06:27:42,275 - root - DEBUG - Annualised Sharpe Ratio: -0.472650592402
+2014-09-03 06:27:42,275 - root - DEBUG - Annualised Sharpe Ratio: 0.545042748417
+2014-09-03 06:27:45,610 - root - INFO - Optimial result - Sharpe Ratio=2.70814542564 [lookback=12.7406798265, entry_z_score=0.79527475333, exit_z_score=-0.76807706034]
+[/code]
+
+It's so simple to get up and running once you know how, and the flexibility offered by any decent logging framework far outweighs the limited learning required to use it. Print statements do have their place (occasionally), but you should be using logging in any applications that matter to you.
+
+Just a few of the many benefits of using a proper logging framework include:
+<ul>
+	<li>The ability to log to the console and/or multiple files, the syslog, or even a web server, e-mail address, or remote computer!</li>
+	<li>Fine grained control over what severity messages to send where based on the log level</li>
+	<li>Custom formatters allowing you to include a date/timestamp, the function/module the statement is being called from</li>
+</ul>
+But that's enough about the benefits - to get up and running, there are then three items we need to address:
+<ol>
+	<li>Create a configuration file for our logger</li>
+	<li>Write a utility function to read and load the configuration file</li>
+	<li>Incorporate the logger into our application</li>
+</ol>
+We will use Python's <a href="https://docs.python.org/2/library/logging.html" target="_blank">logging</a> library which comes as part of the standard library.
+
+Other then Python itself, the only additional dependency we require is <a href="http://pyyaml.org/wiki/PyYAML" target="_blank">PyYAML</a>, as we will use YAML to configure our logger. PyYAML can be installed via Pip:
+
+[code]
+pip install pyyaml
+[/code]
+
+I have chosen to use YAML, as it keeps the config clean, but you can use JSON, XML, or any other format you can convert into a Python dictionary.
+
+The logging library contains 5 different logging <a href="https://docs.python.org/2/library/logging.html#levels" target="_blank">levels</a> for our application, ranging from debug to assist with debugging behaviour as the name suggests, all the way to critical when something goes very wrong.
+
+In our configuration file we define the locations(s) where we wish to log, the severity of messages, and the format in which to log the messages.
+
+The following example provides logging of all messages to standard out:
+
+<em>logging.yaml</em>
+
+[python]
+version: 1
+formatters:
+  simple:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: simple
+    stream: ext://sys.stdout
+root:
+  level: DEBUG
+  handlers: [console]
+[/python]
+
+To log all messages to standard out and any error or critical messages to an error file (<em>errors.log</em>), use the following:
+
+<em>error_logging.yaml</em>
+
+[python]
+version: 1
+formatters:
+  simple:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: simple
+    stream: ext://sys.stdout
+  error_file:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: simple
+    filename: errors.log
+    maxBytes: 104857600
+    backupCount: 100
+root:
+  level: DEBUG
+  handlers: [console, error_file]
+[/python]
+
+We use the <a href="https://docs.python.org/2/library/logging.handlers.html#logging.handlers.RotatingFileHandler">RotatingFileHandler</a> to roll our error log file when it reaches a specific size. It's a good idea to roll your log file periodically to prevent it getting too large. Typically this means each time your application is restarted, or once per day using the <a href="https://docs.python.org/2/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler">TimedRotatingFileHandler</a>.
+
+Note that the minumum level of the root logger defines the minimum log level message that will be handled. I.e. if you specify a root level of WARN, the console will only display log messages of WARN or above.
+
+We then write a helper module for initialising the logger. This helper module looks for an environment variable LOG_CFG to specify a configuration file location. In the absence of this, it tries to use the file location config/logging.yaml. Should this fail it creates a default logger which works much like the print statement.
+
+[code]
+INFO:root:This is using the default basicConfig...
+[/code]
+
+<em>init_logger.py:</em>
+
+[python]
+import logging.config
+import os
+import yaml
+
+
+def setup(default_path='config/logging.yaml',
+          default_level=logging.INFO,
+          env_key='LOG_CFG'):
+
+    path = default_path
+    value = os.getenv(env_key, None)
+    if value:
+        path = value
+    if os.path.exists(path):
+        with open(path, 'rt') as f:
+            config = yaml.load(f.read())
+            logging.config.dictConfig(config)
+    else:
+        logging.basicConfig(level=default_level)
+[/python]
+
+To incorporate the logger into your application, simply import init_logger and call setup() in the first line of your main method.
+
+[python]
+import logging
+
+import init_logger
+
+if __name__ == '__main__':
+    init_logger.setup()
+    logging.info("Wow, that was simple...")
+[/python]
+
+When you run the above, you should see the following:
+
+[code]
+2014-09-02 21:01:06,647 - root - INFO - Wow, that was simple...
+[/code]
+
+From here on in, anywhere you wish to log a message, you have two choices:
+
+1. Call the root logger
+
+[python]
+logging.debug("Log this message if debug is enabled")
+[/python]
+
+[code]
+2014-09-02 21:01:06,647 - root - DEBUG - Log this message if debug is enabled
+[/code]
+
+2. Or, if you want the current module the message is being called from, use
+
+[python]
+log = logging.getLogger(__name__)
+log.error("Uh oh, somethings not right...")
+[/python]
+
+[code]
+2014-09-02 21:03:14,654 - __main__ - ERROR - Uh oh, something's not right
+[/code]
+
+That's all there is to it. As a rule of thumb it's better to go with option 2, as you'll see details of the module. But it's up to you how you proceed.
+
+Even if you don't wish to make use of log files, I suggest you make use of the console logger in all of the scripts/modules you write, however simple. Besides, it looks way cooler when all of your messages have timestamps and details of where they're being generated...
+
+For a more general overview of logging in Python, I suggest you read this great <a href="http://victorlin.me/posts/2012/08/26/good-logging-practice-in-python" target="_blank">post</a> written by Victor Lin.
+
+All code for this example is available <a href="https://github.com/conor10/examples/tree/master/python/logger" target="_blank">here</a>.
+

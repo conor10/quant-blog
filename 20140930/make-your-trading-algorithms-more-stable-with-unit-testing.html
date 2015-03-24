@@ -1,0 +1,100 @@
+Make Your Trading Algorithms More Stable With Unit Testing
+
+<em>When you design trading algorithms and you are not coming from software engineering, you may have noticed that your software can quickly become very complex and hard to manage. Unit testing is an excellent way to improve the functionality, usability and stability of your algos. 
+
+You may have come across the scenario that you've developed some code which ran well and then, for some unexplained reason everything broke. If you are a lucky user of version control, you then revert back to a previous working version. Unit testing can really help to identify issues and keep on top of everything whilst you are adding complexity to your system. Another useful application for unit testing is the fact that by default it documents the functionality of your code units. Sometimes I write functions, that just run and I do not look at them for a long time. It can be hard to exactly figure out what a specific function does months or years later. This is when I refer to my unit tests as a kind of users manual. It works extremely well. Initially, writing meaningful tests can be a bit tricky but proficiency comes with practise, as always. 
+
+Below, Conor gives a great introduction on how you get started. He's been developing commercial trading software for years, so it's worth listening to what he has to say. I highly recommend giving unit testing a try. As with so many things, once you've overcome the barrier to entry, the payoffs are enormous.
+
+- Tom</em> 
+
+In developing your trading applications, there are a number of different types of testing to be addressed. The most important are:
+
+<ul>
+  <li>Unit testing</li>
+  <li>Integration testing</li>
+  <li>Back testing</li>
+  <li>Live testing</li>
+</ul>
+
+If you are into trading algos you will probably have an idea of the latter two items, hence I'm going to touch on the former, which can easily be neglected, especially for those not coming from a development background.
+
+Unit testing is the most granular type of testing - it involves writing tests for your functions/modules/classes to ensure they are behaving as expected (simply put, the tests verify the outcome of interacting with a piece of code is what you expect). These tests are executed using a unit test framework, which runs all of your tests, and notifies you of any test failures.
+
+Integration testing builds on unit tests by testing whole or even multiple modules combined together, simulating more complex interactions of your application, often running the application in its entirety, but operating a with a limited/test data set. However, usually these will still be run using your unit test framework, which I'm going to be covering in this post.
+
+Python comes bundled with the <a href="https://docs.python.org/2/library/unittest.html" target="_blank">unittest</a> module which provides a test framework based on Java's <a href="http://junit.org/" target="_blank">JUnit</a>. A test framework provides you with a test runner, and various functions to assert certain expected outcomes take place.
+
+For this example, we have two functions we wish to test - a forward fill and day count function (<em>utils.py</em>):
+
+[python]
+import numpy as np
+
+
+def day_count(start, end):
+    delta = end - start
+    return delta.days
+
+
+def ffill(data):
+    for i in range(1, len(data)):
+        if np.isnan(data[i]):
+            data[i] = data[i-1]
+    return data
+[/python]
+
+We can write a simple unit test to verify that the functions are behaving as expected (<em>test/test_utils.py</em>):
+
+[python]
+import datetime as dt
+import unittest
+
+import numpy as np
+from numpy.testing import utils as np_utils
+
+import utils
+
+
+class TestUtils(unittest.TestCase):
+    def test_day_count(self):
+        start = dt.datetime(2014, 7, 10)
+        end = dt.datetime(2014, 8, 10)
+        self.assertEqual(31, utils.day_count(start, end))
+
+    def test_ffill(self):
+        data = np.array([0, np.nan, 1, np.nan, np.nan, -1, np.nan])
+        np_utils.assert_array_equal(
+            np.array([0, 0, 1, 1, 1, -1, -1]),
+            utils.ffill(data))
+
+
+if __name__ == '__main__':
+    unittest.main()
+[/python]
+
+You start by creating a class that subclasses <a href="https://docs.python.org/2/library/unittest.html#unittest.TestCase" target="_blank">unittest.TestCase</a>, then define test cases for functionality you wish to test. 
+
+The unittest.TestCase class provides a number of assertion functions that can be used to verify your test outcomes, and a test runner which runs all functions named <em>test_*</em> in your class.
+
+We have created a single test for each function. For the <em>day_count</em> function, we check that it correctly calculates the number of days between two dates. This makes use of the <a href="https://docs.python.org/2/library/unittest.html#unittest.TestCase.assertEqual" target="_blank">assertEqual</a> method provided by our parent class, which verifies that our result matches our expectation. There are many more assertion types you can check, which are all listed on the unittest <a href="https://docs.python.org/2/library/unittest.html#test-cases" target="_blank">docs</a> page.
+
+For our <em>lag</em> function we check that when passed an array it returns the same array with any gaps in our data filled by the previous value. We then use NumPy's <a href="http://docs.scipy.org/doc/numpy/reference/generated/numpy.testing.assert_array_equal.html" target="_blank">assert_array_equal</a> function to verify the array returned from our function meets our expectations. The unittest.TestCase class provides a number of different assertion functions, however, as we are working with NumPy arrays we use an array specific check. You will often find third libraries contain their own unit test modules, after all the authors of those libraries rely heavily on unit tests themselves to keep things stable between releases!
+
+We can run our tests using the python interpreter.
+
+[code]
+export PYTHONPATH=`pwd`
+python test/test_utils.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.001s
+
+OK
+
+[/code]
+
+
+That's all there is to it. Although writing the tests does require more effort then simply writing the code, the great advantage is that, once we have our tests in place, they give us a great degree of confidence when making changes to our original code. By re-running your tests you can be sure that the component you are testing is still behaving in the manner it was previously. The best way to achieve this is using a continuous integration server such as <a href="http://jenkins-ci.org/" target="_blank">Jenkins CI</a>, which runs all of your unit/integration tests each time you commit code into your source code repository, but that's a topic for another post.
+
+The code used in these examples is available <a href="https://github.com/conor10/examples/tree/master/python/unittests" target="_blank">here</a>.
+

@@ -1,0 +1,129 @@
+Automatic Validation of Trading Models
+
+One of the significant challenges faced with creating your own trading models is validation of their correctness. Usually you find a model, implement it in your favourite language, then run some numbers through it to verify it. The verification is often the tricky part, as you simply cannot afford to make mistakes in your calculations.
+
+Ideally you have a reference source where the model has been implemented previously so that you can verify its correctness. This may be a text book or paper, a different programming language, or if you're lucky, the same language as the one you're working with. None of these methods are foolproof, as there might be a typo or bug in your reference source, but at one can argue having more then one implementation increases the likelihood of correctness.
+
+A common scenario is that you'll have a version of the model in Excel, which appears to be where most finance models start off life.
+
+For instance, say we have a <a href="https://github.com/conor10/examples/raw/master/python/model_validation/test/data/AAPL_std_dev.xlsx" target="_blank">spreadsheet</a> containing volatility predictions using 30 day and 60 day lookback periods.
+
+We use calculate the standard deviation $$\sigma$$ of log returns based on the population variance, using the following formula:
+
+$$\sigma = \sqrt{ \frac{1}{N-1} \sum_{i=2}^{N} \left( ln(\frac{c_i}{c_{i-1}}) - \bar{c} \right)^2}$$
+
+Where $$N$$ is our lookback period, $$c_i$$ is our close price on day $$i$$, and the term we subtract is simply the mean log return, $$ \bar{c} $$.
+
+$$ \bar{c} = \frac{1}{N} \sum_{i=2}^{N} ln(\frac{c_i}{c_{i-1}}) $$
+
+Our spreadsheet contains these calculations for AAPL over 30 day and 60 day periods, using data taken from <a href="http://real-chart.finance.yahoo.com/table.csv?s=AAPL&d=11&e=4&f=2014&g=d&a=11&b=12&c=1980&ignore=.csv" target="_blank">Yahoo Finance</a>.
+
+<a href="http://quanttech.co/wp-content/uploads/2014/12/Screen-Shot-2014-12-05-at-06.05.20.png"><img src="http://quanttech.co/wp-content/uploads/2014/12/Screen-Shot-2014-12-05-at-06.05.20.png" alt="Screen Shot 2014-12-05 at 06.05.20" width="711" height="456" class="alignnone size-full wp-image-72" /></a>
+
+We then implement the same formula in Python (the lag function is the same one as I used <a href="http://quanttech.co/2014/09/make-your-trading-algorithms-more-stable-with-unit-testing/" title="Make Your Trading Algorithms More Stable With Unit Testing" target="_blank">here</a>):
+
+[python]
+import numpy as np
+from numpy import log, sqrt
+
+import utils
+
+
+ANNUALISER = sqrt(252.0)
+
+
+def annualise(data):
+    return data * ANNUALISER
+
+
+def population_std_dev(close_prices, lookback):
+    N = float(lookback)
+
+    prices = log(close_prices / utils.lag(close_prices))
+    results = np.zeros(np.size(prices))
+    results[:] = np.NAN
+    for i in range(lookback, len(prices)):
+        bounds = range(i-(lookback-1), i+1)
+        results[i] = sqrt(
+            ((prices[bounds] - prices[bounds].sum() / N)**2).sum() / (N - 1))
+
+    return annualise(results)
+[/python]
+
+In previous posts, I touched on how you can <a href="http://quanttech.co/2014/08/processing-excel-data-sources-in-python/" title="Processing Excel data sources in Python" target="_blank">read data from Excel</a>, and <a href="http://quanttech.co/2014/09/make-your-trading-algorithms-more-stable-with-unit-testing/" title="Make Your Trading Algorithms More Stable With Unit Testing" target="_blank">create unit tests for your algo code</a>. 
+
+We can combine tools used in those posts to create an automated test that:
+
+<ol>
+	<li>Reads in the adjusted close data for AAPL from our spreadsheet</li>
+	<li>Calculates the rolling standard deviation using our Python code</li>
+	<li>Verifies that the results produced by our code match those produced by Excel</li>
+</ol>
+
+The code for this test is as follows:
+
+[python]
+import unittest
+
+import numpy.testing as ntest
+import pandas as pd
+
+import model_validation.volatility as volatility
+
+
+FILENAME = 'data/AAPL_std_dev.xlsx'
+
+
+class TestVolatility(unittest.TestCase):
+    def setUp(self):
+        self.xls_file = pd.ExcelFile(FILENAME)
+        self.data = self.xls_file.parse('AAPL Std Dev',
+                                   header=0, index_col=0, parse_cols='A:J')
+        # We want to reverse our series so the first index is the oldest
+        # entry not newest
+        self.data.sort_index(inplace=True)
+
+    def test_population_std_dev(self):
+        vol30 = volatility.population_std_dev(self.data['Adj Close'], 30)
+        ntest.assert_array_almost_equal(self.data['30 Day Vol'], vol30)
+
+        vol60 = volatility.population_std_dev(self.data['Adj Close'], 60)
+        ntest.assert_array_almost_equal(self.data['60 Day Vol'], vol60)
+[/python]
+
+We use <a href="http://pandas.pydata.org/" title="Pandas" target="_blank">Pandas</a> <a href="http://pandas.pydata.org/pandas-docs/stable/generated/pandas.io.excel.ExcelFile.parse.html" target="_blank">Excel file parser</a> to load our spreadsheet data. Behind the scenes this uses <a href="http://www.python-excel.org/" target="_blank">xlrd</a> which I mentioned <a href="http://quanttech.co/2014/08/processing-excel-data-sources-in-python/" title="Processing Excel data sources in Python" target="_blank">previously</a>. You can specify all the specifics of where the data is that you're interested in in the sheet - the tab, which columns, the row offset your data starts, etc.
+
+[python]
+self.xls_file = pd.ExcelFile(FILENAME)
+self.data = self.xls_file.parse('AAPL Std Dev',
+                           header=0, index_col=0, parse_cols='A:J')
+[/python]
+
+Once we have loaded the data, as it contains the most recent data first, we want to reverse it, such that the first entry is our oldest entry, and the last is our most recent.
+
+[python]
+self.data.sort_index(inplace=True)
+[/python]
+
+We then call our standard deviation calculation, and verify that the result produced by our code is the same as in Excel!
+
+[python]
+vol30 = volatility.population_std_dev(self.data['Adj Close'], 30)
+ntest.assert_array_almost_equal(self.data['30 Day Vol'], vol30)
+
+vol60 = volatility.population_std_dev(self.data['Adj Close'], 60)
+ntest.assert_array_almost_equal(self.data['60 Day Vol'], vol60)
+[/python]
+
+We use Numpy's <a href="http://docs.scipy.org/doc/numpy/reference/generated/numpy.testing.assert_array_almost_equal.html" target="_blank">assert_array_almost_equal</a> function to verify the correctness of our data. By default this ensures our data sets are identical to 6 decimal places. Sometimes you may need to lower this precision to 4 or 5 places due to slight differences in Excel versus Python's arithmetic implementations, but if your code is correct, you shouldn't find yourself very far off.
+
+You now have a model implemented in two places that are producing the same results! Although it's not an absolute guarantee of the correctness of your models, it's a pretty cool way of increasing your confidence in them. Packages also exist for interfacing with <a href="http://au.mathworks.com/help/matlab/matlab-engine-for-python.html" target="_blank">MATLAB</a> and <a href="http://rpy.sourceforge.net/" target="_blank">R</a> from Python, so there's no reason why you couldn't apply similar logic to validate against them also (although you do require a local install of MATLAB/R to use them).
+
+As usual the code for this post is available in its entirety <a href="https://github.com/conor10/examples/tree/master/python/model_validation" target="_blank">here</a>. I've also added verification against Pandas <a href="http://pandas.pydata.org/pandas-docs/stable/computation.html#moving-rolling-statistics-moments" target="_blank">rolling_mean</a> implementation too for completeness (which is way faster then my implementation as it uses <a href="http://cython.org/" target="_blank">Cython</a> to speed things up).
+
+[python]
+def pandas_std_dev(close_prices, lookback):
+    prices = log(close_prices / utils.lag(close_prices))
+    return annualise(pd.rolling_std(prices, window=lookback))
+[/python]
+

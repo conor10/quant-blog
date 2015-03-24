@@ -1,0 +1,76 @@
+Roulette PnL Simulation in MATLAB
+
+Being able to model real world systems statistically is an important skill if you wish to develop quantitative models of the financial markets.
+
+In this post I'm going to take you through how to develop a simple roulette simulator in MATLAB.
+
+Our drunken sailor (of random walk fame), while heading home, happens to stumble into a casino. He ends up at the roulette table, and in his loose state of mind decides to start laying some bets. Unfortunately, there's no proper strategy to his betting. He is betting completely at random. But hey, what do you expect?
+
+Our sailor can choose one of seven available bets, Each of those bets involves selecting $$n$$ numbers at random. Where $$ n \in \{1, 2, 3, 4, 6, 12, 18\}$$. The real bets are listed <a href="http://en.wikipedia.org/wiki/Roulette#Types_of_bets" title="http://en.wikipedia.org/wiki/Roulette#Types_of_bets" target="_blank">here</a>.
+
+For the sake of simplicity, in this model, we do not enforce all of the real bet selection constraints. i.e. two numbers do not have to be adjoining, three numbers do not have to be in sequence, etc. However, each number may only be selected once.
+
+[matlab]
+choices = [1, 2, 3, 4, 6, 12, 18];
+available = linspace(0, 36, 37);
+    
+choice_idx = round(rand * (length(choices) - 1)) + 1;
+count = choices(choice_idx);
+
+bets = [];
+for i = 1:count
+    choice = round(rand * (length(available) - 1)) + 1;
+    bets(end + 1) = available(choice);
+    available(choice) = [];
+end;
+[/matlab]
+
+The above could easily be modified to cater for the real number selection rules, however it won't affect the outcome of our simulation, due to the selections and results using a uniform random distribution.
+
+Given a selection of $$n$$ numbers, the potential payout ($$R$$), on a bet of size ($$S$$) should any one of your numbers come up is
+
+$$!R = S * \left(\dfrac{36}{n} - 1\right)$$
+
+If none of our numbers come up, we simply forfeit our initial bet.
+
+By setting the number of games to play (iterations), and a bet size, we model the possible outcome of each game below, where <em>choose_bet()</em> is the above function.
+
+[matlab]
+iterations = 10000;
+bet_size = 1;
+
+results = round(36.*rand(iterations, 1));
+pnl = (iterations);
+
+for i = 1:iterations
+    bet = choose_bet();
+    if any(bet == results(i))
+        pnl(i) = bet_size * (36/length(bet) - 1);
+    else
+        pnl(i) = -bet_size;
+    end;
+end;
+[/matlab]
+
+We can then plot PnL (assuming our purse is big enough to support $10,000 in bets).
+
+[matlab]
+plot(cumsum(pnl));
+[/matlab]
+
+<a href="http://quanttech.co/wp-content/uploads/2014/10/roulette_negative.png"><img src="http://quanttech.co/wp-content/uploads/2014/10/roulette_negative.png" alt="roulette_negative" width="560" height="420" class="alignnone size-full wp-image-13" /></a>
+
+In roulette, although the odds are always in the house's favour, by running the simulation repeatedly, you will still observe some good runs, where lady luck favours our sailor.
+
+<a href="http://quanttech.co/wp-content/uploads/2014/10/roulette_positive.png"><img src="http://quanttech.co/wp-content/uploads/2014/10/roulette_positive.png" alt="roulette_positive" width="560" height="420" class="alignnone size-full wp-image-14" /></a>
+
+But it truly is <em>luck</em>. By increasing the bet size and/or number of iterations, you will get a far more consistent picture of the likely losses, as demonstrated below (using a bet size of $10 and 1,000,000 iterations).
+
+<a href="http://quanttech.co/wp-content/uploads/2014/10/roulette_larger_bets.png"><img src="http://quanttech.co/wp-content/uploads/2014/10/roulette_larger_bets.png" alt="roulette_larger_bets" width="560" height="420" class="alignnone size-full wp-image-12" /></a>
+
+Now imagine that you didn't know that these charts represented outcomes in roulette, and they were your trading strategy. If you didn't select suitable parameters for your trade (bet) size, and didn't have a large enough data set (iterations) to run a backtest against, sheer chance could fool you into thinking you've found a profitable strategy, following a number of successful runs.
+
+By writing models of systems you can truly understand, you become better equipped with the skills you need to scrutinise models of systems you do not fully understand, such as the financial markets. The insight gained from the process will hopefully help you see the wood from the trees with your models, reducing the likelihood of jumping to false conclusions before it is too late.
+
+You can download the code for this example <a href="https://github.com/conor10/roulette" title="https://github.com/conor10/roulette" target="_blank">here</a>.
+

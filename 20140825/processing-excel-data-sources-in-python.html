@@ -1,0 +1,49 @@
+Processing Excel data sources in Python
+
+The <a href="http://www.python-excel.org/" target="_blank">Python Excel library</a> provides a convenient api for working with Excel spreadsheets in Python.
+
+Within the library, the <a href="https://secure.simplistix.co.uk/svn/xlrd/trunk/xlrd/doc/xlrd.html?p=4966" target="_blank">xlrd</a> module contains functionality for reading Excel spreadsheets.
+
+For instance, Standard and Poors make available spreadsheets of all constituent members of their different indices. The below extract is taken from their S&amp;P500 list.
+
+<a href="http://quanttech.co/wp-content/uploads/2014/10/Screen-Shot-2014-08-11-at-06.56.33.png"><img src="http://quanttech.co/wp-content/uploads/2014/10/Screen-Shot-2014-08-11-at-06.56.33.png" alt="Screen Shot 2014-08-11 at 06.56.33" width="480" height="431" class="alignnone size-full wp-image-17" /></a>
+
+You can use the following code to download, and then process this data.
+[python]
+import urllib2
+
+import xlrd
+
+
+def _parse_response(response):
+    book = xlrd.open_workbook(file_contents=response.read())
+    sheet = book.sheet_by_index(0)
+
+    headers = sheet.row_values(9, start_colx=0, end_colx=2)
+    if headers == [u'Constituent', u'Symbol']:
+        symbols = []
+        for i in range(10, sheet.nrows):
+            symbol = sheet.row_values(i, start_colx=1, end_colx=2)
+            if symbol[0] is not '':
+                symbols.append(symbol[0])
+        return symbols
+    else:
+        print('Invalid sheet format')
+
+
+def _write_symbols(symbols, destination):
+    with open(destination, 'w') as f:
+        for symbol in symbols:
+            f.write(symbol + '\n')
+
+
+def main():
+    response = urllib2.urlopen('http://us.spindices.com/...')
+    symbols = _parse_response(response)
+    _write_symbols(symbols, 'symbols.txt')
+
+
+if __name__ == '__main__':
+    main()
+[/python]
+

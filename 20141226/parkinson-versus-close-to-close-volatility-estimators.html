@@ -1,0 +1,69 @@
+Parkinson Versus Close to Close Volatility Estimators
+
+The Parkinson volatility estimator provides an alternative to the close to close estimator for determining historical price volatility. It uses a range based sample interval - high($$h_i$$) and low($$l_i$$) price log returns in its estimates, instead of a fixed sample interval such as the close price log returns used by the close to close estimator. It is defined as:
+
+$$\sigma = \sqrt{ \frac{1}{4Nln2} \sum_{i=1}^{N} \left( ln(\frac{h_i}{l_i})\right)^2}$$
+
+Which can be implemented in Python as follows:
+
+[python]
+ANNUALISER = sqrt(252.0)
+
+
+def annualise(data):
+    return data * ANNUALISER
+
+
+def parkinson_std_dev(high_prices, low_prices, lookback):
+    """
+    Requires high and low prices during trading period
+    """
+    N = float(lookback)
+
+    prices = log(high_prices / low_prices)**2
+    results = zeros(size(prices))
+    results[:] = NAN
+    for i in range(lookback-1, len(high_prices)):
+        bounds = range(i-(lookback-1), i+1)
+        results[i] = sqrt((1 / (4 * N * log(2))) *
+                          (prices[bounds]).sum())
+    return annualise(results)
+[/python]
+
+Using the implementation of the close to close estimator we created <a href="http://quanttech.co/2014/12/auto-validating-python-trading-models-with-excel/" title="Automatic Validation of Trading Models" target="_blank">previously</a>, we can compare the Parkinson volatility estimates against close to close over a 20 day lookback period.
+
+[python]
+def main():
+    data = pd.read_csv('AAPL.csv', index_col=0, parse_dates=True)
+    data.sort_index(inplace=True)
+    # There was a stock split on 9th June 2014, so we work prior to this date
+    # as we're using non-adjusted data
+    data = data[-1000:-100]
+
+    # We don't use the adjusted close in this example, as the Parkinson
+    # model uses high and low prices which are not adjusted
+    std_dev = vm.population_std_dev(data['Close'], 20)
+    parkinson_vol = vm.parkinson_std_dev(data['High'], data['Low'], 20)
+
+    fig = figure()
+    fig.add_subplot(2, 1, 1)
+    plot(data['High'], label='High')
+    plot(data['Low'], label='Low')
+    plot(data['Close'], label='Close')
+    legend()
+
+    fig.add_subplot(2, 1, 2)
+    plot(std_dev, label='Close to close')
+    plot(parkinson_vol, label='Parkinson')
+    legend()
+
+    show()
+[/python]
+
+This produces the below chart.
+<img src="https://github.com/conor10/examples/raw/master/python/parkinson_volatility/parkinson.png" width="800" height="446" class="alignnone" />
+
+We can see the Parkinson model produces similar, but not identical estimates compared with the close to close model, even though the sampled sources are markedly different. However, it tends not to suffer from sticky spikes in volatility (where a jump causes volatility to remain high for the lookback period) as the close to close model does. It also tends to underestimate volatility, as it has here. Hence it should not be considered in isolation, but is useful to use in conjunction with the close to close estimator and other models to build a more robust estimate of historical volatility.
+
+The code used in this post is available in its entirety <a href="https://github.com/conor10/examples/tree/master/python/parkinson_volatility" target="_blank">here</a>.
+
