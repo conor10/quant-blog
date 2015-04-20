@@ -1,0 +1,91 @@
+Calculating Realistic Strategy Returns
+
+In researching different trading strategies, you will come across simplified reference implementations, whereby your position in an asset is simply the price at a given point in time. Price returns can then be calculated based these prices, which can then be fed into a further calculation such as the Sharpe ratio or <a href="http://en.wikipedia.org/wiki/List_of_financial_performance_measures#Risk-adjusted_performance_measures" target="_blank">other risk-adjusted performance measures</a> in attempt to quantify performance of your strategy.
+
+Things get a little bit more complex in reality, as there are real constraints on your positions that need to be taken into account such as:
+<ol>
+	<li>How much of your overall capital you should allocate to the strategy?</li>
+	<li>The amount cash you have available to fund your strategy will limit the size of the positions you can take.</li>
+	<li>If your strategy contains long and short positions, how should you calculate the overall returns given a positive return in a long position is a loss in a short position?</li>
+</ol>
+
+The <a href="http://en.wikipedia.org/wiki/Kelly_criterion" target="_blank">Kelly criterion</a> is commonly used to assist with the first point. Your model implementation will need to address the second by including functionality to ensure that your strategy stays within the your cash limits. This will need to account for transactions costs, bid/ask spread, lending costs if you're short, etc.
+
+Assuming you've addressed the first couple of items and have your strategy which generates a set of positions at different points in time, you now need to determine it's overall return.
+
+In the following example, we have a long/short equity portfolio represented by a number of different positions in two different stocks, where we represent a long position with a positive quantity, and a short position with a negative quantity. We also have a cash component for tracking our cash balance. These are populated from CSV files created by our strategy.
+
+[python]
+    positions = np.loadtxt('positions.csv', delimiter=',')
+    cash = np.loadtxt('cash.csv', delimiter=',')
+    prices = np.loadtxt('prices.csv', delimiter=',')
+[/python]
+
+We start by calculating our price delta between each period, which is the change in price multiplied by our holdings. Contrary to our long positions, if we are short (position is negative) and the price delta is negative our gain is positive. This is how we capture the upside of our short positions.
+
+[python]
+    delta = (prices - lag(prices)) * positions
+[/python]
+
+We then determine the overall value of our portfolio on each day. We need to take the absolute values of each of our positions for this, to account for the value of our short positions.
+
+[python]
+    notional_value = (np.absolute(positions) * prices).sum(1) + cash
+[/python]
+
+Once we have this information we simply divide the total of our deltas by the overall notional to get our return.
+
+[python]
+    returns = delta.sum(1) / notional_value
+[/python]
+
+We can then view the profitability and calculate our usual performance metrics of the strategy. Further examples, such as calculating drawdown are can be seen on <a href="http://quanttech.co/2015/03/visualising-strategy-drawdowns/" title="Visualising Strategy Drawdowns" target="_blank">my last post</a>.
+
+[python]
+    log_returns = (np.log(1.0 + returns)).cumsum()
+    real_returns = start_cash * np.exp(log_returns)
+
+    plt.plot(real_returns)
+    plt.show()
+[/python]
+
+<img src="https://raw.githubusercontent.com/conor10/examples/master/python/returns/performance.png" alt="performance" />
+
+The full code follows below, and is also available <a href="https://github.com/conor10/examples/tree/master/python/returns" target="_blank">here</a>.
+
+<strong><em>One other thing</em></strong> - in case you haven't noticed, The Whole Street has undergone a change, and it's now known as <a href=" http://quantocracy.com" target="_blank">Quantocracy</a>. It's a great resource for keeping up with happenings in the quant space, and Mike, the site's founder, has big things planned for the future.
+
+[python]
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn
+
+
+def main():
+    start_cash = 1000000.
+    positions = np.loadtxt('positions.csv', delimiter=',')
+    cash = np.loadtxt('cash.csv', delimiter=',')
+    prices = np.loadtxt('prices.csv', delimiter=',')
+
+    delta = (prices - lag(prices)) * positions
+
+    notional_value = (np.absolute(positions) * prices).sum(1) + cash
+    returns = delta.sum(1) / notional_value
+
+    log_returns = (np.log(1.0 + returns)).cumsum()
+    real_returns = start_cash * np.exp(log_returns)
+
+    plt.plot(real_returns)
+    plt.show()
+
+
+def lag(data, empty_term=0.):
+    lagged = np.roll(data, 1, axis=0)
+    lagged[0] = empty_term
+    return lagged
+
+
+if __name__ == '__main__':
+    main()
+[/python]
+
